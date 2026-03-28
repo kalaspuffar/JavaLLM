@@ -219,6 +219,71 @@ public class Tensor {
         return order;
     }
 
+    // --- Operation convenience methods ---
+
+    /**
+     * Matrix multiplication: result = this @ other.
+     * Supports 2D (m,k)@(k,n) and batched 3D (b,m,k)@(b,k,n).
+     */
+    public Tensor matmul(Tensor other) {
+        return org.ea.javallm.autograd.ops.MatMul.forward(this, other);
+    }
+
+    /** Element-wise addition with broadcasting support for bias vectors. */
+    public Tensor add(Tensor other) {
+        return org.ea.javallm.autograd.ops.Add.forward(this, other);
+    }
+
+    /** Element-wise Hadamard product. Both tensors must have the same shape. */
+    public Tensor multiply(Tensor other) {
+        return org.ea.javallm.autograd.ops.Multiply.forward(this, other);
+    }
+
+    /** Multiply all elements by a scalar constant. */
+    public Tensor scale(double scalar) {
+        return org.ea.javallm.autograd.ops.Scale.forward(this, scalar);
+    }
+
+    /** Numerically stable softmax along the specified dimension. */
+    public Tensor softmax(int dim) {
+        return org.ea.javallm.autograd.ops.Softmax.forward(this, dim);
+    }
+
+    /** Rectified linear unit: max(0, x). */
+    public Tensor relu() {
+        return org.ea.javallm.autograd.ops.ReLU.forward(this);
+    }
+
+    /** Swap two dimensions with a physical data copy. */
+    public Tensor transpose(int dim0, int dim1) {
+        return org.ea.javallm.autograd.ops.Transpose.forward(this, dim0, dim1);
+    }
+
+    /** Reshape to a new shape (element count must match). */
+    public Tensor reshape(int... newShape) {
+        return org.ea.javallm.autograd.ops.Reshape.forward(this, newShape);
+    }
+
+    /** Layer normalization across the last dimension. */
+    public Tensor layerNorm(Tensor gamma, Tensor beta, double eps) {
+        return org.ea.javallm.autograd.ops.LayerNormOp.forward(this, gamma, beta, eps);
+    }
+
+    /** Cross-entropy loss from logits and integer target indices. Returns a scalar. */
+    public Tensor crossEntropy(Tensor targets) {
+        return org.ea.javallm.autograd.ops.CrossEntropy.forward(this, targets);
+    }
+
+    /** Select rows from this weight matrix by integer indices. */
+    public Tensor embeddingLookup(Tensor indices) {
+        return org.ea.javallm.autograd.ops.EmbeddingLookup.forward(this, indices);
+    }
+
+    /** Fill masked positions (where mask==0) with fillValue. */
+    public Tensor mask(Tensor maskTensor, double fillValue) {
+        return org.ea.javallm.autograd.ops.Mask.forward(this, maskTensor, fillValue);
+    }
+
     // --- Accessors ---
 
     public double[] getData() {

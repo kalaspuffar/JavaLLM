@@ -91,6 +91,7 @@ public class MultiHeadAttention {
         k = splitHeads(k, batch, kvSeqLen);
         v = splitHeads(v, batch, kvSeqLen);
 
+
         // Scaled dot-product attention:
         // scores = Q @ K^T / sqrt(headDim): (batch*numHeads, querySeqLen, kvSeqLen)
         Tensor kTransposed = k.transpose(1, 2);
@@ -154,20 +155,40 @@ public class MultiHeadAttention {
     }
 
     /**
-     * Tiles a mask of shape (1, querySeqLen, kvSeqLen) to (batchHeads, querySeqLen, kvSeqLen).
-     * If the mask already matches the required size, returns it unchanged.
+     * Expands a mask to match the (batchHeads, querySeqLen, kvSeqLen) attention score shape.
+     *
+     * The stored mask may be larger than the actual sequence lengths (e.g., a causal
+     * mask created for maxSeqLen when the actual sequence is shorter). In that case,
+     * the top-left (querySeqLen, kvSeqLen) submatrix is extracted row by row before
+     * tiling across the batch*heads dimension.
      */
     private static Tensor expandMaskToBatchHeads(Tensor mask, int batchHeads, int querySeqLen, int kvSeqLen) {
         int requiredSize = batchHeads * querySeqLen * kvSeqLen;
-        if (mask.size() == requiredSize) {
+        int[] maskShape = mask.getShape();
+        // Must check shape, not just total size: a (1, 16, 16) mask has the same
+        // element count as (16, 4, 4) but a completely different data layout.
+        if (maskShape.length == 3
+                && maskShape[0] == batchHeads
+                && maskShape[1] == querySeqLen
+                && maskShape[2] == kvSeqLen) {
             return mask;
         }
 
-        int sliceSize = querySeqLen * kvSeqLen;
         double[] maskData = mask.getData();
+        int maskKvDim = mask.getShape()[2];
+        int sliceSize = querySeqLen * kvSeqLen;
+
+        // Extract the top-left (querySeqLen, kvSeqLen) submatrix from the mask,
+        // which may be stored as (1, maskSeqLen, maskKvDim) where maskSeqLen >= querySeqLen.
+        double[] slice = new double[sliceSize];
+        for (int row = 0; row < querySeqLen; row++) {
+            System.arraycopy(maskData, row * maskKvDim, slice, row * kvSeqLen, kvSeqLen);
+        }
+
+        // Tile the extracted slice across all batch*heads
         double[] tiled = new double[requiredSize];
         for (int b = 0; b < batchHeads; b++) {
-            System.arraycopy(maskData, 0, tiled, b * sliceSize, sliceSize);
+            System.arraycopy(slice, 0, tiled, b * sliceSize, sliceSize);
         }
         return new Tensor(tiled, new int[]{batchHeads, querySeqLen, kvSeqLen}, false);
     }

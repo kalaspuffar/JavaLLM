@@ -3,6 +3,7 @@ package org.ea.javallm;
 import org.ea.javallm.autograd.Tensor;
 import org.ea.javallm.data.CharTokenizer;
 import org.ea.javallm.data.ReversalTaskGenerator;
+import org.ea.javallm.data.Tokenizer;
 import org.ea.javallm.model.EncoderDecoderModel;
 import org.ea.javallm.trainers.AdamOptimizer;
 
@@ -65,7 +66,7 @@ public class TranslationTest {
         System.out.println();
 
         // --- Build tokenizer and data generator ---
-        CharTokenizer tokenizer = CharTokenizer.fromText(ALPHABET, true);
+        Tokenizer tokenizer = CharTokenizer.fromText(ALPHABET, true);
         System.out.println("Vocabulary size: " + tokenizer.getVocabSize()
                 + " (26 chars + 3 special tokens)");
 
@@ -147,7 +148,7 @@ public class TranslationTest {
      * starts with SOS, feeds through the model, takes argmax of the last
      * position logits, appends the token, and repeats until EOS or maxLen.
      */
-    private static String greedyDecode(EncoderDecoderModel model, CharTokenizer tokenizer,
+    private static String greedyDecode(EncoderDecoderModel model, Tokenizer tokenizer,
                                        String input) {
         int[] srcTokens = tokenizer.encode(input);
         int vocabSize = tokenizer.getVocabSize();
@@ -158,7 +159,7 @@ public class TranslationTest {
         // Start decoder input with just SOS
         int maxTargetLen = srcTokens.length + 2; // room for reversed string + EOS
         int[] decoderTokens = new int[maxTargetLen];
-        decoderTokens[0] = CharTokenizer.SOS;
+        decoderTokens[0] = Tokenizer.SOS;
         int decoderLen = 1;
 
         StringBuilder result = new StringBuilder();
@@ -183,13 +184,13 @@ public class TranslationTest {
                 }
             }
 
-            if (bestToken == CharTokenizer.EOS) break;
+            if (bestToken == Tokenizer.EOS) break;
 
             decoderTokens[decoderLen] = bestToken;
             decoderLen++;
 
-            // Decode non-special tokens
-            if (bestToken >= tokenizer.getCharacterIdOffset()) {
+            // Decode non-special tokens (IDs 0-2 are PAD, SOS, EOS)
+            if (bestToken >= 3) {
                 result.append(tokenizer.decode(new int[]{bestToken}));
             }
         }
@@ -201,7 +202,7 @@ public class TranslationTest {
      * Evaluates the model on randomly generated reversal examples and prints results.
      * Returns the fraction of examples where the model produced the exact correct reversal.
      */
-    private static double evaluateAndPrint(EncoderDecoderModel model, CharTokenizer tokenizer,
+    private static double evaluateAndPrint(EncoderDecoderModel model, Tokenizer tokenizer,
                                            Random rng, int numExamples) {
         int correct = 0;
         int printLimit = Math.min(numExamples, 5);
@@ -229,7 +230,7 @@ public class TranslationTest {
     /**
      * Interactive mode: user types a string, model reverses it, prints result vs correct.
      */
-    private static void interactiveMode(EncoderDecoderModel model, CharTokenizer tokenizer)
+    private static void interactiveMode(EncoderDecoderModel model, Tokenizer tokenizer)
             throws IOException {
         System.out.println("=== Interactive Mode ===");
         System.out.println("Type a lowercase string to reverse. Type 'quit' to exit.");
@@ -271,8 +272,9 @@ public class TranslationTest {
         return new Tensor(data, new int[]{batch * seqLen}, false);
     }
 
-    private static String generateRandomString(CharTokenizer tokenizer, int length, Random rng) {
-        int offset = tokenizer.getCharacterIdOffset();
+    private static String generateRandomString(Tokenizer tokenizer, int length, Random rng) {
+        // Content token IDs start after the 3 special tokens (PAD, SOS, EOS)
+        int offset = 3;
         int numChars = tokenizer.getVocabSize() - offset;
         StringBuilder sb = new StringBuilder(length);
         for (int i = 0; i < length; i++) {

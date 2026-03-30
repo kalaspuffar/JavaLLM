@@ -4,6 +4,7 @@ import org.ea.javallm.autograd.Tensor;
 import org.ea.javallm.data.CharTokenizer;
 import org.ea.javallm.data.SequenceBatcher;
 import org.ea.javallm.data.TextReader;
+import org.ea.javallm.data.Tokenizer;
 import org.ea.javallm.model.DecoderOnlyModel;
 import org.ea.javallm.trainers.AdamOptimizer;
 import org.ea.javallm.trainers.ModelIO;
@@ -73,7 +74,7 @@ public class CharGenerationTest {
             System.out.println();
 
             TextReader reader = loadTextReader();
-            CharTokenizer tokenizer = CharTokenizer.fromText(reader.getTrainText());
+            Tokenizer tokenizer = CharTokenizer.fromText(reader.getTrainText());
             DecoderOnlyModel model = new DecoderOnlyModel(
                     tokenizer.getVocabSize(), EMBED_DIM, NUM_LAYERS, NUM_HEADS,
                     FFN_INNER_DIM, MAX_SEQ_LEN, rng);
@@ -91,7 +92,7 @@ public class CharGenerationTest {
         String trainText = reader.getTrainText();
         System.out.println("Training text: " + trainText.length() + " characters");
 
-        CharTokenizer tokenizer = CharTokenizer.fromText(trainText);
+        Tokenizer tokenizer = CharTokenizer.fromText(trainText);
         System.out.println("Vocabulary size: " + tokenizer.getVocabSize());
 
         int[] tokens = tokenizer.encode(trainText);
@@ -174,7 +175,7 @@ public class CharGenerationTest {
      * computes logits for the last position, scales by temperature, applies softmax,
      * and samples from the distribution.
      */
-    private static String generateText(DecoderOnlyModel model, CharTokenizer tokenizer,
+    private static String generateText(DecoderOnlyModel model, Tokenizer tokenizer,
                                        String prompt, int maxLen, double temperature,
                                        Random rng) {
         int[] promptTokens = tokenizer.encode(prompt);
@@ -246,7 +247,7 @@ public class CharGenerationTest {
     /**
      * Interactive generation loop: reads prompts from stdin and generates continuations.
      */
-    private static void interactiveMode(DecoderOnlyModel model, CharTokenizer tokenizer,
+    private static void interactiveMode(DecoderOnlyModel model, Tokenizer tokenizer,
                                         Random rng) throws IOException {
         System.out.println("=== Interactive Mode ===");
         System.out.println("Type a prompt and press Enter to generate text.");

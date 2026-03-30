@@ -3,3 +3,5 @@
 /out/
 /data/*.txt
 /data/*.model
+/.mvn
+/target

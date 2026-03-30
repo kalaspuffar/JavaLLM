@@ -13,11 +13,7 @@ import java.util.TreeSet;
  * encoder-decoder tasks), PAD=0, SOS=1, EOS=2 are reserved and character
  * IDs start at 3.
  */
-public class CharTokenizer {
-
-    public static final int PAD = 0;
-    public static final int SOS = 1;
-    public static final int EOS = 2;
+public class CharTokenizer implements Tokenizer {
 
     private final char[] vocabulary;
     private final Map<Character, Integer> charToId;

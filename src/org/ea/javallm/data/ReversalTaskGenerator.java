@@ -15,19 +15,19 @@ import java.util.Random;
  */
 public class ReversalTaskGenerator {
 
-    private final CharTokenizer tokenizer;
+    private final Tokenizer tokenizer;
     private final int minLen;
     private final int maxLen;
     private final Random rng;
 
     /**
-     * @param tokenizer a CharTokenizer with special tokens enabled
+     * @param tokenizer a Tokenizer with special tokens enabled
      * @param minLen    minimum random string length (inclusive)
      * @param maxLen    maximum random string length (inclusive)
      * @param rng       random number generator
      * @throws IllegalArgumentException if the tokenizer does not have special tokens
      */
-    public ReversalTaskGenerator(CharTokenizer tokenizer, int minLen, int maxLen, Random rng) {
+    public ReversalTaskGenerator(Tokenizer tokenizer, int minLen, int maxLen, Random rng) {
         if (!tokenizer.hasSpecialTokens()) {
             throw new IllegalArgumentException(
                     "ReversalTaskGenerator requires a tokenizer with special tokens enabled");
@@ -75,21 +75,21 @@ public class ReversalTaskGenerator {
             // Source: original tokens, padded with PAD
             System.arraycopy(srcTokens, 0, sourceOut[i], 0, srcTokens.length);
             for (int p = srcTokens.length; p < srcPadLen; p++) {
-                sourceOut[i][p] = CharTokenizer.PAD;
+                sourceOut[i][p] = Tokenizer.PAD;
             }
 
             // Decoder input: SOS + reversed tokens, padded with PAD
-            tgtInputOut[i][0] = CharTokenizer.SOS;
+            tgtInputOut[i][0] = Tokenizer.SOS;
             System.arraycopy(revTokens, 0, tgtInputOut[i], 1, revTokens.length);
             for (int p = revTokens.length + 1; p < tgtPadLen; p++) {
-                tgtInputOut[i][p] = CharTokenizer.PAD;
+                tgtInputOut[i][p] = Tokenizer.PAD;
             }
 
             // Decoder target: reversed tokens + EOS, padded with PAD
             System.arraycopy(revTokens, 0, tgtTargetOut[i], 0, revTokens.length);
-            tgtTargetOut[i][revTokens.length] = CharTokenizer.EOS;
+            tgtTargetOut[i][revTokens.length] = Tokenizer.EOS;
             for (int p = revTokens.length + 1; p < tgtPadLen; p++) {
-                tgtTargetOut[i][p] = CharTokenizer.PAD;
+                tgtTargetOut[i][p] = Tokenizer.PAD;
             }
         }
 
@@ -97,8 +97,8 @@ public class ReversalTaskGenerator {
     }
 
     private String generateRandomString(int length) {
-        // Build alphabet from the tokenizer's character range
-        int offset = tokenizer.getCharacterIdOffset();
+        // Content token IDs start after the 3 special tokens (PAD, SOS, EOS)
+        int offset = 3;
         int numChars = tokenizer.getVocabSize() - offset;
         StringBuilder sb = new StringBuilder(length);
         for (int i = 0; i < length; i++) {

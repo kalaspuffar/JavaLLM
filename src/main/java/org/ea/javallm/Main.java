@@ -165,11 +165,17 @@ public class Main {
         System.out.println("Saving model to " + modelPath + "...");
         ModelIO.save(model.getNamedParameters(), modelPath);
         System.out.println("Model saved.");
+
+        // --- Save vocab file alongside model ---
+        String vocabPath = Tokenizer.vocabPathForModel(modelPath);
+        System.out.println("Saving vocabulary to " + vocabPath + "...");
+        tokenizer.saveVocab(vocabPath);
+        System.out.println("Vocabulary saved.");
     }
 
     private static void runGenerate(Map<String, String> options) throws IOException {
         String modelPath = requireOption(options, "model", "generate");
-        String dataPath = requireOption(options, "data", "generate");
+        String dataPath = options.get("data");
         String tokenizerType = getOption(options, "tokenizer", "char");
         String prompt = options.get("prompt");
         double temperature = getDoubleOption(options, "temperature", 0.8);
@@ -181,14 +187,28 @@ public class Main {
         int ffnDim = getIntOption(options, "ffn-dim", 256);
         int maxSeqLen = getIntOption(options, "context-len", 32) * 2;
 
-        // --- Load data for tokenizer ---
-        if (!Files.exists(Paths.get(dataPath))) {
-            System.err.println("Data file not found: " + dataPath);
-            System.exit(1);
-        }
+        // --- Load tokenizer: prefer vocab file, fall back to --data ---
+        String vocabPath = Tokenizer.vocabPathForModel(modelPath);
+        Tokenizer tokenizer;
 
-        TextReader reader = new TextReader(dataPath);
-        Tokenizer tokenizer = buildTokenizer(tokenizerType, reader.getTrainText());
+        if (Files.exists(Paths.get(vocabPath))) {
+            tokenizer = Tokenizer.loadVocab(vocabPath);
+            System.out.println("Loaded tokenizer from " + vocabPath);
+        } else if (dataPath != null) {
+            if (!Files.exists(Paths.get(dataPath))) {
+                System.err.println("Data file not found: " + dataPath);
+                System.exit(1);
+            }
+            TextReader reader = new TextReader(dataPath);
+            tokenizer = buildTokenizer(tokenizerType, reader.getTrainText());
+        } else {
+            System.err.println("Error: no .vocab file found at " + vocabPath
+                    + " and --data was not provided.");
+            System.err.println("Either train with a newer version to generate a .vocab file,");
+            System.err.println("or provide --data to rebuild the tokenizer from the training data.");
+            System.exit(1);
+            return; // unreachable, but satisfies the compiler
+        }
 
         // --- Load model ---
         if (!Files.exists(Paths.get(modelPath))) {
@@ -301,8 +321,10 @@ public class Main {
         System.out.println();
         System.out.println("Generate options:");
         System.out.println("  --model <path>         Saved model path (REQUIRED)");
-        System.out.println("  --data <path>          Data file to rebuild tokenizer (REQUIRED)");
+        System.out.println("  --data <path>          Data file to rebuild tokenizer");
+        System.out.println("                         (optional if .vocab file exists next to model)");
         System.out.println("  --tokenizer <type>     Tokenizer: char or word (default: char)");
+        System.out.println("                         (ignored when loading from .vocab file)");
         System.out.println("  --prompt <text>        Text to continue (omit for interactive mode)");
         System.out.println("  --temperature <t>      Sampling temperature (default: 0.8)");
         System.out.println("  --length <n>           Max tokens to generate (default: 100)");

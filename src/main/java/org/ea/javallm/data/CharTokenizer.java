@@ -1,5 +1,10 @@
 package org.ea.javallm.data;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,6 +45,24 @@ public class CharTokenizer implements Tokenizer {
             index++;
         }
 
+        this.vocabSize = vocabulary.length + characterIdOffset;
+    }
+
+    /**
+     * Constructs a tokenizer from a pre-built vocabulary array.
+     * Used by {@link #fromVocabFile(String)} to reconstruct a saved tokenizer.
+     *
+     * @param vocabulary characters in vocabulary-ID order
+     * @param includeSpecialTokens whether PAD/SOS/EOS are reserved at IDs 0–2
+     */
+    CharTokenizer(char[] vocabulary, boolean includeSpecialTokens) {
+        this.includeSpecialTokens = includeSpecialTokens;
+        this.characterIdOffset = includeSpecialTokens ? 3 : 0;
+        this.vocabulary = Arrays.copyOf(vocabulary, vocabulary.length);
+        this.charToId = new HashMap<>();
+        for (int i = 0; i < vocabulary.length; i++) {
+            charToId.put(vocabulary[i], i + characterIdOffset);
+        }
         this.vocabSize = vocabulary.length + characterIdOffset;
     }
 
@@ -118,5 +141,80 @@ public class CharTokenizer implements Tokenizer {
      */
     public int getCharacterIdOffset() {
         return characterIdOffset;
+    }
+
+    /**
+     * Saves the vocabulary to a plain-text file.
+     *
+     * The first line is a header declaring the tokenizer type and special-token
+     * setting. Each subsequent line is one character from the vocabulary in ID
+     * order. Whitespace characters are escaped: space → {@code \s},
+     * newline → {@code \n}, tab → {@code \t}, backslash → {@code \\}.
+     */
+    public void saveVocab(String path) throws IOException {
+        try (BufferedWriter writer = Files.newBufferedWriter(Path.of(path))) {
+            writer.write("#type=char special=" + includeSpecialTokens);
+            writer.newLine();
+            for (char c : vocabulary) {
+                writer.write(escapeChar(c));
+                writer.newLine();
+            }
+        }
+    }
+
+    /**
+     * Reconstructs a CharTokenizer from a previously saved vocab file.
+     *
+     * @param path path to the vocab file
+     * @return a CharTokenizer with the same vocabulary and settings
+     * @throws IOException if the file cannot be read or has an invalid format
+     */
+    public static CharTokenizer fromVocabFile(String path) throws IOException {
+        try (BufferedReader reader = Files.newBufferedReader(Path.of(path))) {
+            String header = reader.readLine();
+            if (header == null || !header.startsWith("#type=char")) {
+                throw new IOException(
+                        "Invalid vocab file header: expected '#type=char ...', got: " + header);
+            }
+            boolean special = header.contains("special=true");
+
+            java.util.List<Character> chars = new java.util.ArrayList<>();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                chars.add(unescapeChar(line));
+            }
+
+            char[] vocab = new char[chars.size()];
+            for (int i = 0; i < chars.size(); i++) {
+                vocab[i] = chars.get(i);
+            }
+            return new CharTokenizer(vocab, special);
+        }
+    }
+
+    private static String escapeChar(char c) {
+        return switch (c) {
+            case ' ' -> "\\s";
+            case '\n' -> "\\n";
+            case '\t' -> "\\t";
+            case '\\' -> "\\\\";
+            default -> String.valueOf(c);
+        };
+    }
+
+    private static char unescapeChar(String token) {
+        return switch (token) {
+            case "\\s" -> ' ';
+            case "\\n" -> '\n';
+            case "\\t" -> '\t';
+            case "\\\\" -> '\\';
+            default -> {
+                if (token.length() != 1) {
+                    throw new IllegalArgumentException(
+                            "Expected single character or escape sequence, got: '" + token + "'");
+                }
+                yield token.charAt(0);
+            }
+        };
     }
 }

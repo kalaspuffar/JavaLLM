@@ -20,11 +20,11 @@ bash data/download-shakespeare.sh
 # Train a character-level model on Shakespeare (500 steps, ~5 minutes)
 java -jar target/javallm.jar train --data data/shakespeare.txt
 
-# Generate text from the trained model
-java -jar target/javallm.jar generate --model out.model --data data/shakespeare.txt --prompt "To be or not"
+# Generate text from the trained model (vocab file is loaded automatically)
+java -jar target/javallm.jar generate --model out.model --prompt "To be or not"
 
 # Or enter interactive mode (no --prompt)
-java -jar target/javallm.jar generate --model out.model --data data/shakespeare.txt
+java -jar target/javallm.jar generate --model out.model
 ```
 
 ### Running the Demo Programs Directly
@@ -43,7 +43,7 @@ java -cp target/classes org.ea.javallm.TranslationTest
 
 ```bash
 ./mvnw test
-# Runs 131 JUnit 5 tests covering all components
+# Runs 147 JUnit 5 tests covering all components
 ```
 
 ## CLI Reference
@@ -57,7 +57,7 @@ java -jar javallm.jar train --data <path> [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--data <path>` | *(required)* | Training data text file |
-| `--model <path>` | `out.model` | Where to save the trained model |
+| `--model <path>` | `out.model` | Where to save the trained model (a `.vocab` file is saved alongside) |
 | `--tokenizer <type>` | `char` | Tokenizer: `char` or `word` |
 | `--embed-dim <n>` | `64` | Embedding dimension |
 | `--layers <n>` | `2` | Number of Transformer layers |
@@ -71,14 +71,14 @@ java -jar javallm.jar train --data <path> [options]
 ### `generate` — Generate text
 
 ```
-java -jar javallm.jar generate --model <path> --data <path> [options]
+java -jar javallm.jar generate --model <path> [options]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--model <path>` | *(required)* | Path to a saved model |
-| `--data <path>` | *(required)* | Training data (to rebuild tokenizer vocabulary) |
-| `--tokenizer <type>` | `char` | Must match the tokenizer used during training |
+| `--data <path>` | *(optional)* | Training data to rebuild tokenizer (not needed if `.vocab` file exists next to model) |
+| `--tokenizer <type>` | `char` | Tokenizer type (ignored when loading from `.vocab` file) |
 | `--prompt <text>` | *(interactive)* | Text to continue; omit for interactive mode |
 | `--temperature <t>` | `0.8` | Sampling temperature (lower = more deterministic) |
 | `--length <n>` | `100` | Maximum tokens to generate |
@@ -203,6 +203,8 @@ wtoieko
 
 Saving model to out.model...
 Model saved.
+Saving vocabulary to out.vocab...
+Vocabulary saved.
 ```
 
 With longer training (500 steps), the model begins producing recognizable English words and Shakespeare-like patterns. The loss decreases from ~4.2 (random) toward ~2.5.
@@ -218,7 +220,7 @@ JavaLLM/
 │   └── shakespeare.txt          Tiny Shakespeare corpus (~1MB)
 ├── src/
 │   ├── main/java/org/ea/javallm/   Source code (35 Java files)
-│   └── test/java/org/ea/javallm/   Tests (19 test files, 131 tests)
+│   └── test/java/org/ea/javallm/   Tests (22 test files, 147 tests)
 └── target/
     └── javallm.jar              Built fat JAR (after mvn package)
 ```

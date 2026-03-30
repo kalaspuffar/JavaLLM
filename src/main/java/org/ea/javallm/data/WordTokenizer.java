@@ -1,5 +1,10 @@
 package org.ea.javallm.data;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +50,24 @@ public class WordTokenizer implements Tokenizer {
             wordToId.put(vocabulary[i], i + wordIdOffset);
         }
 
+        this.vocabSize = vocabulary.length + wordIdOffset;
+    }
+
+    /**
+     * Constructs a tokenizer from a pre-built vocabulary array.
+     * Used by {@link #fromVocabFile(String)} to reconstruct a saved tokenizer.
+     *
+     * @param vocabulary words in vocabulary-ID order
+     * @param includeSpecialTokens whether PAD/SOS/EOS are reserved at IDs 0–2
+     */
+    WordTokenizer(String[] vocabulary, boolean includeSpecialTokens) {
+        this.includeSpecialTokens = includeSpecialTokens;
+        this.wordIdOffset = includeSpecialTokens ? 3 : 0;
+        this.vocabulary = vocabulary.clone();
+        this.wordToId = new HashMap<>();
+        for (int i = 0; i < vocabulary.length; i++) {
+            wordToId.put(vocabulary[i], i + wordIdOffset);
+        }
         this.vocabSize = vocabulary.length + wordIdOffset;
     }
 
@@ -137,5 +160,48 @@ public class WordTokenizer implements Tokenizer {
      */
     public int getWordIdOffset() {
         return wordIdOffset;
+    }
+
+    /**
+     * Saves the vocabulary to a plain-text file.
+     *
+     * The first line is a header declaring the tokenizer type and special-token
+     * setting. Each subsequent line is one word from the vocabulary in ID order.
+     */
+    public void saveVocab(String path) throws IOException {
+        try (BufferedWriter writer = Files.newBufferedWriter(Path.of(path))) {
+            writer.write("#type=word special=" + includeSpecialTokens);
+            writer.newLine();
+            for (String word : vocabulary) {
+                writer.write(word);
+                writer.newLine();
+            }
+        }
+    }
+
+    /**
+     * Reconstructs a WordTokenizer from a previously saved vocab file.
+     *
+     * @param path path to the vocab file
+     * @return a WordTokenizer with the same vocabulary and settings
+     * @throws IOException if the file cannot be read or has an invalid format
+     */
+    public static WordTokenizer fromVocabFile(String path) throws IOException {
+        try (BufferedReader reader = Files.newBufferedReader(Path.of(path))) {
+            String header = reader.readLine();
+            if (header == null || !header.startsWith("#type=word")) {
+                throw new IOException(
+                        "Invalid vocab file header: expected '#type=word ...', got: " + header);
+            }
+            boolean special = header.contains("special=true");
+
+            List<String> words = new ArrayList<>();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                words.add(line);
+            }
+
+            return new WordTokenizer(words.toArray(new String[0]), special);
+        }
     }
 }

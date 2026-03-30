@@ -9,9 +9,7 @@ import org.ea.javallm.model.DecoderOnlyModel;
 import org.ea.javallm.trainers.AdamOptimizer;
 import org.ea.javallm.trainers.ModelIO;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Random;
@@ -21,18 +19,14 @@ import java.util.Random;
  * model on Shakespeare text, generates samples during training to show
  * improvement, saves the trained model, and offers interactive generation.
  *
- * Usage:
- *   javac -d out $(find src -name "*.java")
- *   java -cp out org.ea.javallm.CharGenerationTest
+ * This demo uses hardcoded defaults. For configurable training, use the CLI:
+ *   java -jar javallm.jar train --data data/shakespeare.txt
  *
  * Requires data/shakespeare.txt — run data/download-shakespeare.sh to obtain it.
  */
 public class CharGenerationTest {
 
     // --- Model hyperparameters ---
-    // Scaled down from spec Appendix C defaults (128/4/4/512) to be practical
-    // for CPU training with the autograd engine's per-tensor memory overhead.
-    // Increase these values if running with a larger heap (-Xmx).
     private static final int EMBED_DIM = 64;
     private static final int NUM_LAYERS = 2;
     private static final int NUM_HEADS = 2;
@@ -80,7 +74,8 @@ public class CharGenerationTest {
                     FFN_INNER_DIM, MAX_SEQ_LEN, rng);
             ModelIO.load(model.getNamedParameters(), MODEL_PATH);
 
-            interactiveMode(model, tokenizer, rng);
+            TextGenerator generator = new TextGenerator(model, tokenizer, MAX_SEQ_LEN, rng);
+            generator.interactiveMode(GENERATE_LEN, TEMPERATURE);
             return;
         }
 
@@ -110,6 +105,7 @@ public class CharGenerationTest {
         System.out.println("Model parameters: " + paramCount);
 
         AdamOptimizer optimizer = new AdamOptimizer(model.getParameters(), LEARNING_RATE);
+        TextGenerator textGenerator = new TextGenerator(model, tokenizer, MAX_SEQ_LEN, rng);
 
         // --- Training loop ---
         System.out.println();
@@ -124,10 +120,8 @@ public class CharGenerationTest {
             int[][] inputBatch = batcher.nextInputBatch();
             int[][] targetBatch = batcher.nextTargetBatch();
 
-            // Forward: get logits (batch, seqLen, vocabSize)
             Tensor logits = model.forward(inputBatch);
 
-            // Flatten for cross-entropy: (batch*seqLen, vocabSize) and (batch*seqLen)
             int batchSize = inputBatch.length;
             int seqLen = inputBatch[0].length;
             int vocabSize = tokenizer.getVocabSize();
@@ -137,7 +131,6 @@ public class CharGenerationTest {
 
             Tensor loss = logitsFlat.crossEntropy(targetsFlat);
 
-            // Backward and update
             optimizer.zeroGrad();
             loss.backward();
             optimizer.step();
@@ -150,8 +143,7 @@ public class CharGenerationTest {
             if (step % SAMPLE_INTERVAL == 0) {
                 System.out.println();
                 System.out.println("--- Sample at step " + step + " ---");
-                String sample = generateText(model, tokenizer, "The ", GENERATE_LEN,
-                        TEMPERATURE, rng);
+                String sample = textGenerator.generate("The ", GENERATE_LEN, TEMPERATURE);
                 System.out.println(sample);
                 System.out.println("--- End sample ---");
                 System.out.println();
@@ -165,119 +157,13 @@ public class CharGenerationTest {
         System.out.println();
 
         // --- Interactive mode ---
-        interactiveMode(model, tokenizer, rng);
-    }
-
-    /**
-     * Autoregressive text generation with temperature sampling.
-     *
-     * Uses a sliding window of the last maxSeqLen tokens as context. At each step,
-     * computes logits for the last position, scales by temperature, applies softmax,
-     * and samples from the distribution.
-     */
-    private static String generateText(DecoderOnlyModel model, Tokenizer tokenizer,
-                                       String prompt, int maxLen, double temperature,
-                                       Random rng) {
-        int[] promptTokens = tokenizer.encode(prompt);
-        int vocabSize = tokenizer.getVocabSize();
-
-        // Build the full token sequence, starting from the prompt
-        int[] generated = new int[promptTokens.length + maxLen];
-        System.arraycopy(promptTokens, 0, generated, 0, promptTokens.length);
-        int totalLen = promptTokens.length;
-
-        for (int i = 0; i < maxLen; i++) {
-            // Sliding window: use the last MAX_SEQ_LEN tokens as context
-            int contextStart = Math.max(0, totalLen - MAX_SEQ_LEN);
-            int contextLen = totalLen - contextStart;
-
-            int[][] input = new int[1][contextLen];
-            System.arraycopy(generated, contextStart, input[0], 0, contextLen);
-
-            Tensor logits = model.forward(input);
-
-            // Extract logits for the last position: shape (1, contextLen, vocabSize)
-            double[] logitData = logits.getData();
-            int lastPosOffset = (contextLen - 1) * vocabSize;
-
-            // Temperature scaling and softmax sampling
-            int sampledToken = sampleFromLogits(logitData, lastPosOffset, vocabSize,
-                    temperature, rng);
-
-            generated[totalLen] = sampledToken;
-            totalLen++;
-        }
-
-        return tokenizer.decode(java.util.Arrays.copyOf(generated, totalLen));
-    }
-
-    /**
-     * Samples a token from logits at a given offset using temperature-scaled softmax.
-     */
-    private static int sampleFromLogits(double[] logits, int offset, int vocabSize,
-                                        double temperature, Random rng) {
-        // Temperature scaling
-        double[] scaled = new double[vocabSize];
-        double max = Double.NEGATIVE_INFINITY;
-        for (int i = 0; i < vocabSize; i++) {
-            scaled[i] = logits[offset + i] / temperature;
-            if (scaled[i] > max) max = scaled[i];
-        }
-
-        // Softmax
-        double sumExp = 0.0;
-        for (int i = 0; i < vocabSize; i++) {
-            scaled[i] = Math.exp(scaled[i] - max);
-            sumExp += scaled[i];
-        }
-        for (int i = 0; i < vocabSize; i++) {
-            scaled[i] /= sumExp;
-        }
-
-        // Multinomial sampling
-        double r = rng.nextDouble();
-        double cumulative = 0.0;
-        for (int i = 0; i < vocabSize; i++) {
-            cumulative += scaled[i];
-            if (r < cumulative) return i;
-        }
-        return vocabSize - 1;
-    }
-
-    /**
-     * Interactive generation loop: reads prompts from stdin and generates continuations.
-     */
-    private static void interactiveMode(DecoderOnlyModel model, Tokenizer tokenizer,
-                                        Random rng) throws IOException {
-        System.out.println("=== Interactive Mode ===");
-        System.out.println("Type a prompt and press Enter to generate text.");
-        System.out.println("Type 'quit' to exit.");
-        System.out.println();
-
-        BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in));
-        String line;
-        while (true) {
-            System.out.print("> ");
-            System.out.flush();
-            line = stdin.readLine();
-            if (line == null || line.equalsIgnoreCase("quit")) {
-                System.out.println("Goodbye.");
-                break;
-            }
-            if (line.isEmpty()) continue;
-
-            String result = generateText(model, tokenizer, line, GENERATE_LEN,
-                    TEMPERATURE, rng);
-            System.out.println(result);
-            System.out.println();
-        }
+        textGenerator.interactiveMode(GENERATE_LEN, TEMPERATURE);
     }
 
     /**
      * Converts a 2D target batch into a flat Tensor for cross-entropy.
-     * Target shape (batch, seqLen) → flat Tensor shape (batch*seqLen).
      */
-    private static Tensor targetBatchToTensor(int[][] targetBatch) {
+    static Tensor targetBatchToTensor(int[][] targetBatch) {
         int batch = targetBatch.length;
         int seqLen = targetBatch[0].length;
         double[] data = new double[batch * seqLen];
